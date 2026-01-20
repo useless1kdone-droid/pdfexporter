@@ -10,28 +10,22 @@ import os
 app = Flask(__name__)
 
 # ── CORS ────────────────────────────────────────────────────────────────
-# Most reliable setup for Render + Vercel + local dev
+# Fixed CORS configuration - removed credentials conflict
 CORS(app, resources={
     r"/*": {
-        "origins": [
-            "http://localhost:3000",
-            "http://localhost:5173",       # Vite default
-            "https://eedr-iot.vercel.app",
-            "https://*.vercel.app",        # preview branches
-            "*"                            # temporary fallback - remove later
-        ],
+        "origins": "*",  # Allow all origins
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
     }
 })
 
-# Optional: explicit OPTIONS handler (very helpful on Render)
 @app.after_request
 def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+    origin = request.headers.get("Origin", "*")
+    response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Max-Age"] = "3600"
     return response
 
 # Logo configuration
@@ -202,6 +196,11 @@ def export_pdf():
     except Exception as e:
         print(f"PDF generation error: {str(e)}")
         return jsonify({"error": "Failed to generate PDF", "detail": str(e)}), 500
+
+# Health check endpoint
+@app.route("/", methods=["GET"])
+def health_check():
+    return jsonify({"status": "healthy", "service": "PDF Export Service"})
 
 # ─────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":

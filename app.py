@@ -15,7 +15,7 @@ app = Flask(__name__)
 # Enable CORS for localhost (dev) and deployed frontend
 FRONTEND_DOMAINS = [
     "http://localhost:3000",  # local development
-    "https://myfrontend.onrender.com",  # replace with your actual frontend
+    "https://eedr-iot.vercel.app/",  # replace with your actual frontend
 ]
 CORS(app, resources={r"/export-pdf": {"origins": FRONTEND_DOMAINS}})
 

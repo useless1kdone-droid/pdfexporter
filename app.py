@@ -12,12 +12,14 @@ import os
 # ─────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
-# Enable CORS for localhost (dev) and deployed frontend
+# Enable CORS for local dev and deployed frontend
 FRONTEND_DOMAINS = [
-    "http://localhost:3000",  # local development
-    "https://eedr-iot.vercel.app",  # replace with your actual frontend
+    "http://localhost:3000",       # local development
+    "https://eedr-iot.vercel.app", # deployed frontend
 ]
-CORS(app, resources={r"/export-pdf": {"origins": FRONTEND_DOMAINS}})
+
+# Allow POST/OPTIONS requests from the above origins
+CORS(app, resources={r"/export-pdf": {"origins": FRONTEND_DOMAINS}}, supports_credentials=True)
 
 LOGO_PATH = os.getenv("LOGO_PATH", "eedrlogo.png")
 
@@ -27,14 +29,13 @@ LOGO_PATH = os.getenv("LOGO_PATH", "eedrlogo.png")
 # ─────────────────────────────────────────────────────────────
 def draw_vertical_gradient(c, width, height):
     steps = 140
-    start = colors.Color(0.94, 0.98, 0.94)  # very light green
-    end   = colors.Color(0.88, 1.00, 0.88)  # lime tint
+    start = colors.Color(0.94, 0.98, 0.94)
+    end = colors.Color(0.88, 1.00, 0.88)
 
     for i in range(steps):
-        r = start.red   + (end.red   - start.red)   * (i / steps)
+        r = start.red + (end.red - start.red) * (i / steps)
         g = start.green + (end.green - start.green) * (i / steps)
-        b = start.blue  + (end.blue  - start.blue)  * (i / steps)
-
+        b = start.blue + (end.blue - start.blue) * (i / steps)
         c.setFillColor(colors.Color(r, g, b))
         c.rect(0, height * i / steps, width, height / steps, stroke=0, fill=1)
 
@@ -82,7 +83,7 @@ def generate_pdf(data, logo_path=LOGO_PATH):
             height - logo_height - 0.5 * inch,
             logo_width,
             logo_height,
-            mask='auto'
+            mask="auto"
         )
     except Exception:
         c.setFont("Helvetica-Bold", 10)
@@ -105,7 +106,6 @@ def generate_pdf(data, logo_path=LOGO_PATH):
         ("Baseline Data", data.get("bundle_baseline", "N/A")),
         ("Delta (Live)", data.get("bundle_delta", "N/A")),
     ]
-
     for label, value in bundle_fields:
         c.setFont("Helvetica-Bold", 11)
         c.drawString(card_x + 24, y_inner, f"{label}:")
@@ -121,7 +121,6 @@ def generate_pdf(data, logo_path=LOGO_PATH):
 
     y_inner = y - 55
     points = data.get("credibility_points", []) or ["No credibility points available"]
-
     c.setFont("Helvetica", 11)
     for p in points:
         c.drawString(card_x + 36, y_inner, f"• {p}")
@@ -141,7 +140,6 @@ def generate_pdf(data, logo_path=LOGO_PATH):
         ("Maintenance Downtime", data.get("ops_downtime", "N/A")),
         ("Data Drift Accuracy", "99%"),
     ]
-
     for label, value in ops_fields:
         c.setFont("Helvetica-Bold", 11)
         c.drawString(card_x + 24, y_inner, f"{label}:")
@@ -152,11 +150,7 @@ def generate_pdf(data, logo_path=LOGO_PATH):
     # Footer
     c.setFont("Helvetica-Oblique", 10)
     c.setFillColor(colors.darkgreen)
-    c.drawString(
-        1 * inch,
-        0.5 * inch,
-        "Provided by Climate Care Consulting"
-    )
+    c.drawString(1 * inch, 0.5 * inch, "Provided by Climate Care Consulting")
 
     c.save()
     buffer.seek(0)
@@ -164,10 +158,19 @@ def generate_pdf(data, logo_path=LOGO_PATH):
 
 
 # ─────────────────────────────────────────────────────────────
-# API Route
+# Handle preflight & PDF export
 # ─────────────────────────────────────────────────────────────
-@app.route("/export-pdf", methods=["POST"])
+@app.route("/export-pdf", methods=["OPTIONS", "POST"])
 def export_pdf():
+    # Handle preflight request
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers["Access-Control-Allow-Origin"] = ", ".join(FRONTEND_DOMAINS)
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
+        return response
+
+    # Handle POST request
     if not request.is_json:
         return jsonify({"error": "Expected JSON body"}), 400
 
@@ -179,11 +182,12 @@ def export_pdf():
     response = make_response(pdf.getvalue())
     response.headers["Content-Type"] = "application/pdf"
     response.headers["Content-Disposition"] = "attachment; filename=energy_report.pdf"
+    response.headers["Access-Control-Allow-Origin"] = ", ".join(FRONTEND_DOMAINS)
     return response
 
 
 # ─────────────────────────────────────────────────────────────
-# Local development only
+# Run locally
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")

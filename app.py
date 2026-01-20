@@ -7,188 +7,203 @@ from reportlab.lib import colors
 from io import BytesIO
 import os
 
-# ─────────────────────────────────────────────────────────────
-# Flask app
-# ─────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
-# Enable CORS for local dev and deployed frontend
-FRONTEND_DOMAINS = [
-    "http://localhost:3000",       # local development
-    "https://eedr-iot.vercel.app", # deployed frontend
-]
+# ── CORS ────────────────────────────────────────────────────────────────
+# Most reliable setup for Render + Vercel + local dev
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:3000",
+            "http://localhost:5173",       # Vite default
+            "https://eedr-iot.vercel.app",
+            "https://*.vercel.app",        # preview branches
+            "*"                            # temporary fallback - remove later
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 
-# Allow POST/OPTIONS requests from the above origins
-CORS(app, resources={r"/export-pdf": {"origins": FRONTEND_DOMAINS}}, supports_credentials=True)
+# Optional: explicit OPTIONS handler (very helpful on Render)
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
 
-LOGO_PATH = os.getenv("LOGO_PATH", "eedrlogo.png")
+# Logo configuration
+LOGO_PATH = os.getenv("LOGO_PATH", "eedrlogo.png")  # must be in repo root
 
-
-# ─────────────────────────────────────────────────────────────
-# Draw vertical gradient background
-# ─────────────────────────────────────────────────────────────
+# ── Background Gradient ─────────────────────────────────────────────────
 def draw_vertical_gradient(c, width, height):
-    steps = 140
-    start = colors.Color(0.94, 0.98, 0.94)
-    end = colors.Color(0.88, 1.00, 0.88)
-
+    steps = 120
+    start = colors.Color(0.945, 0.98, 0.945)   # very light mint
+    end   = colors.Color(0.90, 1.00, 0.90)     # soft lime tint
+    
     for i in range(steps):
-        r = start.red + (end.red - start.red) * (i / steps)
-        g = start.green + (end.green - start.green) * (i / steps)
-        b = start.blue + (end.blue - start.blue) * (i / steps)
+        ratio = i / steps
+        r = start.red + (end.red - start.red) * ratio
+        g = start.green + (end.green - start.green) * ratio
+        b = start.blue + (end.blue - start.blue) * ratio
         c.setFillColor(colors.Color(r, g, b))
-        c.rect(0, height * i / steps, width, height / steps, stroke=0, fill=1)
+        c.rect(0, height * ratio, width, height / steps, stroke=0, fill=1)
 
-
-# ─────────────────────────────────────────────────────────────
-# Draw a card
-# ─────────────────────────────────────────────────────────────
+# ── Card Component ──────────────────────────────────────────────────────
 def draw_card(c, x, y, w, h, title):
-    # Shadow
-    c.setFillColor(colors.Color(0, 0, 0, alpha=0.06))
-    c.roundRect(x + 4, y - 4, w, h, 12, stroke=0, fill=1)
-
-    # Card body
+    # Soft shadow
+    c.setFillColor(colors.Color(0, 0, 0, alpha=0.05))
+    c.roundRect(x + 3, y - 3, w, h, 10, stroke=0, fill=1)
+    
+    # White card
     c.setFillColor(colors.white)
-    c.roundRect(x, y, w, h, 12, stroke=0, fill=1)
-
-    # Accent bar
-    c.setFillColor(colors.Color(0.25, 0.7, 0.45))
-    c.rect(x, y + h - 10, w, 10, stroke=0, fill=1)
-
+    c.roundRect(x, y, w, h, 10, stroke=0, fill=1)
+    
+    # Top accent bar
+    c.setFillColor(colors.Color(0.22, 0.68, 0.42))  # nice green
+    c.rect(x, y + h - 8, w, 8, stroke=0, fill=1)
+    
     # Title
     c.setFillColor(colors.darkgreen)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(x + 18, y + h - 28, title)
+    c.setFont("Helvetica-Bold", 15)
+    c.drawString(x + 20, y + h - 26, title)
 
-
-# ─────────────────────────────────────────────────────────────
-# Generate PDF
-# ─────────────────────────────────────────────────────────────
-def generate_pdf(data, logo_path=LOGO_PATH):
+# ── Core PDF Generator ──────────────────────────────────────────────────
+def generate_pdf(data):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
+    width, height = A4   # ~595 x 842 pt
 
     # Background
     draw_vertical_gradient(c, width, height)
 
-    # Logo
+    # ── Logo ────────────────────────────────────────────────────────────
     try:
-        logo_width = 2 * inch
-        logo_height = logo_width * 0.5
+        logo_w = 2.1 * inch
+        logo_h = logo_w * 0.48   # adjust ratio based on your logo
         c.drawImage(
-            logo_path,
-            (width - logo_width) / 2,
-            height - logo_height - 0.5 * inch,
-            logo_width,
-            logo_height,
-            mask="auto"
+            LOGO_PATH,
+            x = (width - logo_w) / 2,
+            y = height - logo_h - 0.45 * inch,
+            width = logo_w,
+            height = logo_h,
+            mask='auto'
         )
-    except Exception:
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(1 * inch, height - 1.2 * inch, "[Logo unavailable]")
+    except Exception as e:
+        print(f"Logo error: {str(e)}")  # will show in Render logs
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColor(colors.grey)
+        c.drawString(
+            (width - 180) / 2,
+            height - 1.1 * inch,
+            "[EEdR Logo unavailable]"
+        )
 
-    y = height - 2.5 * inch
-    card_x = 0.8 * inch
-    card_w = width - 1.6 * inch
+    # Starting Y position under logo
+    y_pos = height - 2.6 * inch
+    card_x = 0.75 * inch
+    card_width = width - 1.5 * inch
 
-    # ── Bundle Card ───────────────────────────
-    card_h = 180
-    draw_card(c, card_x, y - card_h, card_w, card_h, "Bundle")
-
-    y_inner = y - 55
+    # ── 1. Bundle Card ──────────────────────────────────────────────────
+    card_height = 195
+    draw_card(c, card_x, y_pos - card_height, card_width, card_height, "Bundle")
+    
+    y_inner = y_pos - 52
     c.setFont("Helvetica", 11)
-    bundle_fields = [
-        ("Building", data.get("bundle_building", "N/A")),
-        ("Meter", data.get("bundle_meter", "N/A")),
-        ("Realtime Data", data.get("bundle_realtime", "N/A")),
-        ("Baseline Data", data.get("bundle_baseline", "N/A")),
-        ("Delta (Live)", data.get("bundle_delta", "N/A")),
+    
+    bundle_items = [
+        ("Building",        data.get("bundle_building", "—")),
+        ("Meter",           data.get("bundle_meter", "—")),
+        ("Realtime Data",   data.get("bundle_realtime", "—")),
+        ("Baseline Data",   data.get("bundle_baseline", "—")),
+        ("Delta (Live)",    data.get("bundle_delta", "—")),
     ]
-    for label, value in bundle_fields:
+    
+    for label, value in bundle_items:
+        c.setFillColor(colors.black)
         c.setFont("Helvetica-Bold", 11)
         c.drawString(card_x + 24, y_inner, f"{label}:")
+        
         c.setFont("Helvetica", 11)
-        c.drawString(card_x + 180, y_inner, str(value))
+        c.drawString(card_x + 170, y_inner, str(value))
+        y_inner -= 22
+
+    y_pos -= card_height + 24
+
+    # ── 2. Credibility Card ─────────────────────────────────────────────
+    card_height = 160
+    draw_card(c, card_x, y_pos - card_height, card_width, card_height, "Credibility")
+    
+    y_inner = y_pos - 52
+    points = data.get("credibility_points", [])
+    
+    if not points:
+        points = ["No credibility points available"]
+    
+    for point in points[:5]:  # limit to avoid overflow
+        c.setFont("Helvetica", 11)
+        c.drawString(card_x + 32, y_inner, f"• {point}")
         y_inner -= 20
 
-    y -= card_h + 28
+    y_pos -= card_height + 24
 
-    # ── Credibility Card ─────────────────────
-    card_h = 150
-    draw_card(c, card_x, y - card_h, card_w, card_h, "Credibility")
-
-    y_inner = y - 55
-    points = data.get("credibility_points", []) or ["No credibility points available"]
-    c.setFont("Helvetica", 11)
-    for p in points:
-        c.drawString(card_x + 36, y_inner, f"• {p}")
-        y_inner -= 18
-
-    y -= card_h + 28
-
-    # ── Operations Card ──────────────────────
-    card_h = 170
-    draw_card(c, card_x, y - card_h, card_w, card_h, "Operations")
-
-    y_inner = y - 55
-    ops_fields = [
-        ("Recommendations Followed", data.get("ops_recommendations", "N/A")),
-        ("Energy Saved", data.get("ops_energy_saved", "N/A")),
-        ("Resources Saved", data.get("ops_resources_saved", "N/A")),
-        ("Maintenance Downtime", data.get("ops_downtime", "N/A")),
-        ("Data Drift Accuracy", "99%"),
+    # ── 3. Operations Card ──────────────────────────────────────────────
+    card_height = 185
+    draw_card(c, card_x, y_pos - card_height, card_width, card_height, "Operations")
+    
+    y_inner = y_pos - 52
+    ops_items = [
+        ("Recommendations Followed", data.get("ops_recommendations", "—")),
+        ("Energy Saved",             data.get("ops_energy_saved", "—")),
+        ("Resources Saved",          data.get("ops_resources_saved", "—")),
+        ("Maintenance Downtime",     data.get("ops_downtime", "—")),
+        ("Data Drift Accuracy",      "99%"),   # hardcoded as per your request
     ]
-    for label, value in ops_fields:
+    
+    for label, value in ops_items:
+        c.setFillColor(colors.black)
         c.setFont("Helvetica-Bold", 11)
         c.drawString(card_x + 24, y_inner, f"{label}:")
+        
         c.setFont("Helvetica", 11)
         c.drawString(card_x + 260, y_inner, str(value))
-        y_inner -= 18
+        y_inner -= 22
 
-    # Footer
+    # ── Footer ──────────────────────────────────────────────────────────
     c.setFont("Helvetica-Oblique", 10)
     c.setFillColor(colors.darkgreen)
-    c.drawString(1 * inch, 0.5 * inch, "Provided by Climate Care Consulting")
+    c.drawString(
+        0.75 * inch,
+        0.45 * inch,
+        "Provided by Climate Care Consulting"
+    )
 
     c.save()
     buffer.seek(0)
     return buffer
 
-
-# ─────────────────────────────────────────────────────────────
-# Handle preflight & PDF export
-# ─────────────────────────────────────────────────────────────
+# ── API Endpoint ────────────────────────────────────────────────────────
 @app.route("/export-pdf", methods=["POST", "OPTIONS"])
 def export_pdf():
-    # Handle preflight
     if request.method == "OPTIONS":
-        response = make_response()
-        response.headers["Access-Control-Allow-Origin"] = ",".join(FRONTEND_DOMAINS)
-        response.headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        return response
+        return "", 204
 
-    # Handle POST request
     if not request.is_json:
-        return jsonify({"error": "Expected JSON body"}), 400
+        return jsonify({"error": "JSON body required"}), 400
 
     try:
-        pdf = generate_pdf(request.get_json())
+        pdf_buffer = generate_pdf(request.get_json())
+        response = make_response(pdf_buffer.getvalue())
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Content-Disposition"] = 'attachment; filename="Energy_Report.pdf"'
+        return response
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"PDF generation error: {str(e)}")
+        return jsonify({"error": "Failed to generate PDF", "detail": str(e)}), 500
 
-    response = make_response(pdf.getvalue())
-    response.headers["Content-Type"] = "application/pdf"
-    response.headers["Content-Disposition"] = "attachment; filename=energy_report.pdf"
-    response.headers["Access-Control-Allow-Origin"] = ",".join(FRONTEND_DOMAINS)
-    return response
-
-
-
-# ─────────────────────────────────────────────────────────────
-# Run locally
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, host="0.0.0.0")
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)

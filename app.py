@@ -7,23 +7,23 @@ from reportlab.lib import colors
 from io import BytesIO
 import os
 
+# ─────────────────────────────────────────────────────────────
+# Flask app
+# ─────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
-# Enable CORS — adjust origins in production
-CORS(app, resources={
-    r"/export-pdf": {
-        "origins": [
-            "http://localhost:3000",
-            "https://eedr-iot.vercel.app/"
-        ]
-    }
-})
+# Enable CORS for localhost (dev) and deployed frontend
+FRONTEND_DOMAINS = [
+    "http://localhost:3000",  # local development
+    "https://myfrontend.onrender.com",  # replace with your actual frontend
+]
+CORS(app, resources={r"/export-pdf": {"origins": FRONTEND_DOMAINS}})
 
 LOGO_PATH = os.getenv("LOGO_PATH", "eedrlogo.png")
 
 
 # ─────────────────────────────────────────────────────────────
-# Background Gradient
+# Draw vertical gradient background
 # ─────────────────────────────────────────────────────────────
 def draw_vertical_gradient(c, width, height):
     steps = 140
@@ -40,7 +40,7 @@ def draw_vertical_gradient(c, width, height):
 
 
 # ─────────────────────────────────────────────────────────────
-# Card Component
+# Draw a card
 # ─────────────────────────────────────────────────────────────
 def draw_card(c, x, y, w, h, title):
     # Shadow
@@ -62,7 +62,7 @@ def draw_card(c, x, y, w, h, title):
 
 
 # ─────────────────────────────────────────────────────────────
-# PDF Generator
+# Generate PDF
 # ─────────────────────────────────────────────────────────────
 def generate_pdf(data, logo_path=LOGO_PATH):
     buffer = BytesIO()
@@ -182,6 +182,8 @@ def export_pdf():
     return response
 
 
+# ─────────────────────────────────────────────────────────────
+# Local development only
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app.run(debug=True, port=5000, host="0.0.0.0")

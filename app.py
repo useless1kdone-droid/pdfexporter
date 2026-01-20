@@ -160,14 +160,14 @@ def generate_pdf(data, logo_path=LOGO_PATH):
 # ─────────────────────────────────────────────────────────────
 # Handle preflight & PDF export
 # ─────────────────────────────────────────────────────────────
-@app.route("/export-pdf", methods=["OPTIONS", "POST"])
+@app.route("/export-pdf", methods=["POST", "OPTIONS"])
 def export_pdf():
-    # Handle preflight request
+    # Handle preflight
     if request.method == "OPTIONS":
         response = make_response()
-        response.headers["Access-Control-Allow-Origin"] = ", ".join(FRONTEND_DOMAINS)
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Origin"] = ",".join(FRONTEND_DOMAINS)
         response.headers["Access-Control-Allow-Methods"] = "POST,OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return response
 
     # Handle POST request
@@ -182,8 +182,9 @@ def export_pdf():
     response = make_response(pdf.getvalue())
     response.headers["Content-Type"] = "application/pdf"
     response.headers["Content-Disposition"] = "attachment; filename=energy_report.pdf"
-    response.headers["Access-Control-Allow-Origin"] = ", ".join(FRONTEND_DOMAINS)
+    response.headers["Access-Control-Allow-Origin"] = ",".join(FRONTEND_DOMAINS)
     return response
+
 
 
 # ─────────────────────────────────────────────────────────────
